@@ -1,9 +1,9 @@
 #include <bits/stdc++.h>
 using namespace std;
 double eyeX, eyeY, eyeZ, lookX, lookY, lookZ, upX, upY, upZ, fovY, aspectRatio, near, far;
-vector<double> eye;
+stack<int> pushed_idx;
 stack < vector< vector<double>> > commands_stack;
-
+string stage1 ,stage2,stage3;
 void readFirst4Lines(ifstream *myfile, string line)
 {
     //***********  line1  ************
@@ -18,7 +18,7 @@ void readFirst4Lines(ifstream *myfile, string line)
         else if(i==1) eyeY = stod(temp);
         else if(i==2) eyeZ = stod(temp);
     }
-    cout << eyeX << " " << eyeZ << endl;
+    cout << eyeX << " "<< eyeY << " " << eyeZ << endl;
 
     // line 2
     getline(*myfile, line);
@@ -32,7 +32,7 @@ void readFirst4Lines(ifstream *myfile, string line)
         else if(i==1) lookY= stod(temp);
         else if(i==2) lookZ = stod(temp);
     }
-    cout << lookX << " " << lookY << " " << eyeZ << endl;
+    cout << lookX << " " << lookY << " " << lookZ << endl;
 
 
     //    line 3
@@ -164,13 +164,13 @@ void translate_command(double tx,double ty,double tz)
     transtaror_matrix[0][3] = tx;
     transtaror_matrix[1][3] = ty;
     transtaror_matrix[2][3] = tz;
-    cout << "translator\n" ;
-    print4_4Vector(transtaror_matrix);
-    cout << "stacktop ";
-    print4_4Vector(commands_stack.top());
+    //cout << "translator\n" ;
+    //print4_4Vector(transtaror_matrix);
+   // cout << "stacktop ";
+    //print4_4Vector(commands_stack.top());
     commands_stack.push(multiplyVector(commands_stack.top(),transtaror_matrix));
-    cout << "stacktop ";
-    print4_4Vector(commands_stack.top());
+    //cout << "stacktop ";
+   // print4_4Vector(commands_stack.top());
 }
 
 
@@ -202,11 +202,11 @@ void rotate_command( double angle , double ax , double ay , double az)
                                                 };
 
 
-    cout << "rotation" ;
-    print4_4Vector(rotation_matrix);
+    //cout << "rotation" ;
+    //print4_4Vector(rotation_matrix);
     commands_stack.push(  multiplyVector(commands_stack.top(),rotation_matrix));
-    cout << "rotationtop";
-    print4_4Vector(commands_stack.top());
+   // cout << "rotationtop";
+    //print4_4Vector(commands_stack.top());
 }
 
 void scale_command(double sx, double sy,double sz)
@@ -217,8 +217,144 @@ void scale_command(double sx, double sy,double sz)
      scale_matrix[2][2] = sz;
      scale_matrix[3][3] = 1;
      commands_stack.push(multiplyVector(commands_stack.top(),scale_matrix));
-     cout << "Scale:";
-     print4_4Vector(commands_stack.top());
+     //cout << "Scale:";
+     //print4_4Vector(commands_stack.top());
+}
+
+
+
+vector<vector<double>> scalePoint( vector<vector<double>> point ){
+    if(point[3][0] != 1 ){
+        for( int i = 0 ; i < 4; i++ ){
+            point[i][0] = point[i][0] / point[3][0];
+        }
+    }
+
+    return point;
+}
+
+
+vector<double>  normalize(vector<double> c)
+{
+     double val = 0.0;
+
+     for(int i=0; i<c.size() ; i++) {
+        val += c[i]*c[i];
+     }
+     val = sqrt(val);
+     c[0] = c[0]/val;
+     c[1] = c[1] /val;
+     c[2] = c[2] / val;
+     return c;
+}
+
+vector<vector<double> > viewTransform()
+{
+    vector<vector <double>> T_vect = { {  {1.0}, {0.0},  {0.0} ,  {-eyeX}  },
+                                        {  {0.0}, {1.0},  {0.0} ,   {-eyeY}  } ,
+                                        {  {0.0}, {0.0},  {1.0} ,   {-eyeZ}  } ,
+                                        {  {0.0}, {0.0},  {0.0} ,   {1.0}    }
+                                        };
+
+
+    vector<double> L = { {lookX - eyeX}, {lookY - eyeY} , {lookZ- eyeZ} } ;
+    L = normalize(L);
+    vector<double> up;
+    up.push_back(upX);
+    up.push_back(upY);
+    up.push_back(upZ);
+    vector<double> R = cross_product(L,up);
+    R = normalize(R);
+    vector< double > U = cross_product(R,L);
+    U = normalize(U);
+    vector<vector <double>> R_vect = {
+                                        { {R[0]},   {R[1]},     { R[2] } ,  { 0.0 }    },
+                                        { {U[0]},   {U[1]},     { U[2] } ,  { 0.0 }    },
+                                        { {-L[0]},  {-L[1]},    {- L[2]} , { 0.0 }    },
+                                        { { 0.0 },  { 0.0 },    { 0.0 } ,   { 1.0 }    },
+
+                                        } ;
+     cout << "Lvect " << L[0]  << " " << L[1] << " " << L[2] << endl;
+
+    return multiplyVector(R_vect, T_vect);
+
+
+}
+
+
+
+vector<vector<double>> projectionTransform()
+{
+    double fovX = fovY * aspectRatio;
+    double t = near * tan((fovY/2) * 3.1416/180);
+    double r = near * tan((fovX/2) * 3.1416/180);
+
+    return {
+            { {near/r}, {0.0} , {0.0} , {0.0} },
+            { {0.0}, {near/t},   {0.0} , {0.0} },
+            { {0.0} , {0.0}  ,  { -(far+near)/(far-near) },  {   -(2*far*near)/(far-near) }  },
+            {  {0.0} , {0.0} , {-1.0} , {0.0}     }
+
+        }  ;
+
+}
+
+
+
+void TransformPoint(vector<vector<double>>  point )
+{
+    point = multiplyVector(commands_stack.top(), point);
+    //cout << "transformed point= ";
+    //print4_4Vector(point);
+    point = scalePoint(point);
+
+    for(int i=0; i<3; i++)
+    {
+        stage1 +=to_string( point[i][0] ) + "  ";
+    }
+    stage1 += "\n";
+
+
+    point = multiplyVector(viewTransform() , point);
+    cout << "print disi\n";
+    print4_4Vector(point);
+    point = scalePoint(point);
+    print4_4Vector(point);
+
+    for(int i=0; i<3; i++)
+    {
+        stage2 +=to_string( point[i][0] ) + "  ";
+    }
+    stage2 += "\n";
+
+
+    point = multiplyVector(projectionTransform(),point);
+    point = scalePoint(point);
+
+    for(int i=0; i<3; i++)
+    {
+        stage3 +=to_string( point[i][0] ) + "  ";
+    }
+    stage3 += "\n";
+
+
+}
+
+vector <vector<double>> readPoint(ifstream *myfile, string line)
+{
+    getline(*myfile,line);
+    stringstream stream(line);
+    string temp;
+    vector<vector<double>> point(4,vector<double>(1,0));
+    for(int i=0; i<3; i++)
+    {
+        getline(stream,temp,' ');
+        cout << temp << endl;
+        point[i][0] = stod(temp);
+    }
+
+    point[3][0] = 1.0;
+    return point;
 }
 
 int main()
@@ -235,25 +371,32 @@ int main()
         firstElement[i][i] = 1.0;
     }
 
-    vector <vector <double>> test =
-    {
-        { 0}, {0}, {0}, {0}
-    } ;
 
-
-    cout << test.size() << endl;
     commands_stack.push(firstElement);
+
+
     print4_4Vector(commands_stack.top());
-    print4_4Vector(multiplyVector(firstElement,firstElement));
 
 
     while (getline(myfile, command))
     {
         cout << command << endl;
+
         if(command == "triangle")
         {
             cout << "tri paise\n";
+            for(int i=0; i<3; i++)
+            {
+                vector<vector<double>> point1 = readPoint(&myfile,line);
+                TransformPoint(point1);
+                print4_4Vector(point1);
+            }
+
+            stage1 += "\n";
+            stage2 += "\n";
+            stage3 += "\n";
         }
+
         else if(command == "translate")
         {
             cout << "translate paise\n";
@@ -271,9 +414,10 @@ int main()
             }
 
             translate_command(tx,ty,tz);
-
+            print4_4Vector(commands_stack.top());
 
         }
+
         else  if(command == "scale")
         {
             cout << "scale paise\n";
@@ -291,8 +435,9 @@ int main()
             }
 
             scale_command(sx,sy,sz);
-
+            print4_4Vector(commands_stack.top());
         }
+
         else  if(command == "rotate")
         {
             cout << " Rotate pse\n";
@@ -312,24 +457,56 @@ int main()
             }
 
             rotate_command(angle,ax,ay,az);
-
+            print4_4Vector(commands_stack.top());
 
         }
-        else  if(command == "push ")
+
+        else  if(command == "push")
         {
             cout << "pusssss\n";
-
+            pushed_idx.push(commands_stack.size()-1);
+            print4_4Vector(commands_stack.top());
         }
         else  if(command == "pop")
         {
             cout << "pooooop\n";
+            if(commands_stack.size() > 1)
+            {
+                int idx = pushed_idx.top();
+                pushed_idx.pop();
+                int noOfmatricesTobePoped = commands_stack.size()- idx - 1;
+
+                for(int i=0; i<noOfmatricesTobePoped; i++)
+                {
+                    commands_stack.pop();
+                }
+
+            }
+            print4_4Vector(commands_stack.top());
+
         }
+
         else  if(command == "end")
         {
-            cout << "sesh\n" ;
+            cout << "sesh\n";
             break;
         }
     }
     cout << "kaj korse";
+    cout << "stage1 " << stage1;
+    cout << endl << "stage 2 \n";
+    cout << stage2;
+    cout << endl << "stage 3 \n";
+    cout << stage3;
+    ofstream teststage1,teststage2,teststage3;
+    teststage1.open("testStage1.txt");
+    teststage2.open("testStage2.txt");
+    teststage3.open("testStage3.txt");
+    teststage1 << stage1;
+    teststage2 << stage2;
+    teststage3 << stage3;
+    teststage1.close();
+    teststage2.close();
+    teststage3.close();
     return 0;
 }
